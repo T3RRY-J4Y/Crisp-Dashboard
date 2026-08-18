@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sister Unathi Conversations Dashboard</title>
+<link rel="icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="512x512" href="favicon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="loginScreen" class="login-screen hidden">
+  <div class="login-content">
+    <img src="logo.webp" alt="Sister Unathi" class="login-logo">
+    <div class="login-box">
+      <div class="eyebrow">Sister Unathi · Crisp Dashboard</div>
+      <h1>Enter password</h1>
+      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
+      <button id="loginBtn">Unlock</button>
+      <p class="login-error hidden" id="loginError">Wrong password. Try again.</p>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="wrap hidden">
+
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="eyebrow">Crisp · Conversations</div>
+      <h1>Conversations Dashboard</h1>
+      <p class="sub">Track support conversations, response state and volume trends across any date range.</p>
+    </div>
+    <img src="logo.webp" alt="Sister Unathi" class="hero-logo">
+  </header>
+
+  <div class="panel">
+    <div class="panel-title">Fetch by date range</div>
+    <div class="row">
+      <div class="field">
+        <label for="startDate">Start date</label>
+        <input type="date" id="startDate">
+      </div>
+      <div class="field">
+        <label for="endDate">End date</label>
+        <input type="date" id="endDate">
+      </div>
+      <div class="field grow">
+        <label>&nbsp;</label>
+        <div class="btn-group">
+          <button class="primary" id="fetchBtn">Fetch conversations</button>
+          <button class="secondary" id="resetBtn">Reset</button>
+        </div>
+      </div>
+    </div>
+    <div class="progress-wrap hidden" id="progressWrap">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <span class="progress-pct" id="progressPct">0%</span>
+    </div>
+    <p class="note" id="fetchNote"></p>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Jump to a session ID</div>
+    <div class="row">
+      <div class="field grow">
+        <label for="jumpSession">Session ID</label>
+        <input type="text" id="jumpSession" placeholder="Add a session ID">
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button class="secondary" id="jumpBtn">Open conversation</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-row" id="statsRow"></div>
+
+  <div class="charts-row">
+    <div class="chart-panel">
+      <div class="panel-title">Conversation volume</div>
+      <div class="chart-canvas-wrap">
+        <canvas id="volumeChart"></canvas>
+        <div class="empty-chart hidden" id="volumeEmpty">Fetch a date range to see volume trends.</div>
+      </div>
+    </div>
+    <div class="chart-panel">
+      <div class="panel-title">Status breakdown</div>
+      <div class="chart-canvas-wrap donut">
+        <canvas id="statusChart"></canvas>
+        <div class="donut-center hidden" id="donutCenter"><span class="n" id="donutTotal">0</span><span class="l">Total</span></div>
+        <div class="empty-chart hidden" id="statusEmpty">No data yet.</div>
+      </div>
+      <div class="legend-row" id="statusLegend"></div>
+    </div>
+  </div>
+
+  <div class="charts-row even">
+    <div class="chart-panel">
+      <div class="panel-title">Conversations by day of week</div>
+      <div class="chart-canvas-wrap">
+        <canvas id="weekdayChart"></canvas>
+        <div class="empty-chart hidden" id="weekdayEmpty">Fetch a date range to see this breakdown.</div>
+      </div>
+    </div>
+    <div class="chart-panel">
+      <div class="panel-title">Conversations by hour of day</div>
+      <div class="chart-canvas-wrap">
+        <canvas id="hourChart"></canvas>
+        <div class="empty-chart hidden" id="hourEmpty">Fetch a date range to see this breakdown.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="tablePanel">
+    <div class="panel-title-row">
+      <div class="panel-title" style="margin:0;flex:none;">Conversations <span id="tableCount"></span></div>
+      <div class="table-actions">
+        <input type="text" id="filterBox" placeholder="Filter by name, email, phone…">
+        <button class="secondary" id="exportBtn" disabled>Export CSV</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="convTable">
+        <thead>
+          <tr>
+            <th class="sortable" data-key="session_id">Session</th>
+            <th class="sortable" data-key="state">Status</th>
+            <th class="sortable" data-key="created_at">Started</th>
+            <th class="sortable" data-key="updated_at">Ended</th>
+            <th class="sortable" data-key="nickname">Visitor</th>
+            <th class="sortable" data-key="phone">Phone</th>
+            <th class="sortable" data-key="last_message">Last message</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="convBody">
+          <tr><td colspan="8" class="empty">Fetch a date range to see conversations here.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+</div>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-backdrop" id="modalBackdrop"></div>
+  <div class="modal-box">
+    <button class="modal-close" id="modalClose">&times;</button>
+    <div class="meta" id="modalMeta"></div>
+    <div class="thread" id="modalThread"></div>
+  </div>
+</div>
+
+<script src="vendor/chart.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
