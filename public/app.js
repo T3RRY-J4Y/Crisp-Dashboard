@@ -35,6 +35,7 @@ const ICONS = {
   resolved: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`,
   pending: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>`,
   unresolved: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a1.6 1.6 0 001.4 2.4h17.6a1.6 1.6 0 001.4-2.4L13.7 3.9a1.6 1.6 0 00-2.8 0z"/><path d="M12 9v4"/><path d="M12 16.5h.01"/></svg>`,
+  automated: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M9 3v4M15 3v4M8 13h.01M16 13h.01M9 17h6"/></svg>`,
 };
 
 let volumeChart = null;
@@ -181,7 +182,7 @@ $("loginPassword").addEventListener("keydown", (e) => {
 function showEmptyState() {
   state.conversations = [];
   state.page = 1;
-  renderStats({ resolved: 0, pending: 0, unresolved: 0 }, 0);
+  renderStats({ resolved: 0, pending: 0, unresolved: 0, automated: 0 }, 0);
   renderTable();
   renderVolumeChart([]);
   renderStatusChart({ resolved: 0, pending: 0, unresolved: 0 }, 0);
@@ -211,7 +212,8 @@ function renderStats(stats, total) {
     card("total", "Total", total, ICONS.total) +
     card("resolved", "Resolved", stats.resolved, ICONS.resolved) +
     card("pending", "Pending", stats.pending, ICONS.pending) +
-    card("unresolved", "Unresolved", stats.unresolved, ICONS.unresolved);
+    card("unresolved", "Unresolved", stats.unresolved, ICONS.unresolved) +
+    card("automated", "Automated", stats.automated || 0, ICONS.automated);
 }
 
 // ---------- Charts ----------
@@ -500,7 +502,7 @@ function renderTable() {
         (c) => `
     <tr>
       <td>${escapeHtml((c.session_id || "").replace("session_", "").slice(0, 8))}…</td>
-      <td><span class="badge ${c.state}">${c.state}</span></td>
+      <td><span class="badge ${c.state}">${c.state}</span>${c.automated ? ' <span class="badge automated" title="No human operator has replied yet - handled entirely by the bot">Automated</span>' : ""}</td>
       <td>${fmtDate(c.created_at)}</td>
       <td>${fmtDate(c.updated_at)}</td>
       <td>${escapeHtml(c.nickname || "Unknown")}</td>
@@ -581,8 +583,13 @@ $("fetchBtn").addEventListener("click", async () => {
   note.textContent = "Fetching… this can take a while for large date ranges.";
   try {
     const json = await scanWithProgress(`/api/scan?start=${start}&end=${end}`, (p) => {
-      setProgress(progressFromPageCount(p.page));
-      note.textContent = `Fetching... ${p.loaded} conversations found so far.`;
+      if (p.phase === "automation") {
+        setProgress(70 + 29 * (p.total ? p.checked / p.total : 1));
+        note.textContent = `Checking which conversations were automated... ${p.checked}/${p.total}.`;
+      } else {
+        setProgress(progressFromPageCount(p.page) * (70 / 92));
+        note.textContent = `Fetching... ${p.loaded} conversations found so far.`;
+      }
     });
     setProgress(100);
     state.conversations = json.conversations;
@@ -627,13 +634,14 @@ $("filterBox").addEventListener("input", () => {
 $("exportBtn").addEventListener("click", () => {
   const rows = state.conversations;
   if (!rows.length) return;
-  const headers = ["session_id", "state", "created_at", "updated_at", "nickname", "email", "phone", "last_message"];
+  const headers = ["session_id", "state", "automated", "created_at", "updated_at", "nickname", "email", "phone", "last_message"];
   const csvLines = [headers.join(",")];
   for (const r of rows) {
     const line = headers
       .map((h) => {
         let v = r[h] ?? "";
         if (h === "created_at" || h === "updated_at") v = v ? new Date(v).toISOString() : "";
+        if (h === "automated") v = v ? "yes" : "no";
         v = String(v).replace(/"/g, '""');
         return `"${v}"`;
       })

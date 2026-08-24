@@ -96,7 +96,7 @@ header.hero{
 header.hero .eyebrow{color:var(--gold);}
 header.hero h1{font-family:var(--serif);font-weight:500;font-size:34px;margin:0;color:#fff;letter-spacing:-.01em;}
 header.hero p.sub{color:rgba(255,255,255,.72);margin:8px 0 0;font-size:13.5px;max-width:520px;}
-.hero-logo{position:absolute;top:24px;right:56px;height:64px;width:auto;}
+.hero-logo{position:absolute;top:56px;right:56px;height:64px;width:auto;}
 
 /* ---------------- Panels ---------------- */
 .panel{background:var(--panel);border:1px solid var(--panel-border);border-radius:var(--radius-md);padding:22px;margin-bottom:18px;box-shadow:var(--shadow-sm);}
@@ -142,7 +142,8 @@ button:disabled{opacity:.4;cursor:not-allowed;transform:none !important;}
 .progress-pct{font-size:11.5px;font-weight:700;color:var(--ink-dim);min-width:36px;text-align:right;}
 
 /* ---------------- Stat cards ---------------- */
-.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px;}
+@media(max-width:960px){.stats-row{grid-template-columns:repeat(3,1fr);}}
 @media(max-width:760px){.stats-row{grid-template-columns:repeat(2,1fr);}}
 .stat-card{
   background:var(--panel);border:1px solid var(--panel-border);border-radius:var(--radius-md);
@@ -165,6 +166,9 @@ button:disabled{opacity:.4;cursor:not-allowed;transform:none !important;}
 .stat-card.unresolved{background:rgba(212,63,58,.08);border-color:rgba(212,63,58,.20);}
 .stat-card.unresolved .num{color:var(--safe-red);}
 .stat-card.unresolved .icon{--icon-bg:rgba(212,63,58,.16);--icon-color:var(--safe-red);}
+.stat-card.automated{background:rgba(18,117,130,.08);border-color:rgba(18,117,130,.20);}
+.stat-card.automated .num{color:var(--teal-mid);}
+.stat-card.automated .icon{--icon-bg:rgba(18,117,130,.16);--icon-color:var(--teal-mid);}
 
 /* ---------------- Charts ---------------- */
 .charts-row{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-bottom:18px;}
@@ -204,6 +208,7 @@ tr:hover td{background:var(--bg-soft);}
 .badge.resolved{background:rgba(14,121,91,.14);color:var(--safe-green);}
 .badge.pending{background:rgba(176,139,47,.14);color:var(--gold);}
 .badge.unresolved{background:rgba(212,63,58,.14);color:var(--safe-red);}
+.badge.automated{background:rgba(18,117,130,.14);color:var(--teal-mid);margin-left:4px;}
 .excerpt{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-faint);}
 .view-link{color:var(--blue-mid);cursor:pointer;text-decoration:none;font-weight:700;white-space:nowrap;font-size:11.5px;}
 .view-link:hover{color:var(--teal-mid);text-decoration:underline;}

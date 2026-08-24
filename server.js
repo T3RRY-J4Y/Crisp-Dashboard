@@ -425,6 +425,66 @@ app.post("/api/coding/:sessionId", requireAppPassword, (req, res) => {
   res.json({ suggestion });
 });
 
+// ---- "Automated" detection ----
+// Crisp's own web UI has an "Automated" inbox (populated by its bot/AI
+// agent) for conversations no operator has touched yet, but that
+// classification isn't exposed as a field anywhere in the REST API - it has
+// to be derived from the message thread. The per-message `automated: true`
+// flag looked promising but under-reports: system events the bot generates
+// (e.g. it resolving the conversation) come through as `type: "event"` with
+// no `automated` flag at all, even though nothing but the bot touched the
+// conversation. What's reliably present on every bot-sent message,
+// including those events, is `origin: "urn:crisp.im:bot:0"`. So: a
+// conversation is "automated" if at least one operator-side message exists
+// and every one of them has that bot origin - the same condition under
+// which Crisp keeps a conversation in its Automated inbox (any
+// operator-attributed message from elsewhere moves it out).
+const BOT_ORIGIN = "urn:crisp.im:bot:0";
+
+function isFullyAutomated(messages) {
+  let sawOperatorMessage = false;
+  for (const m of messages || []) {
+    if (m.from === "operator") {
+      sawOperatorMessage = true;
+      if (m.origin !== BOT_ORIGIN) return false;
+    }
+  }
+  return sawOperatorMessage;
+}
+
+// Determining this requires fetching the full message thread per
+// conversation (not part of the lightweight conversation-list response), so
+// we run a small worker pool against Crisp rather than one request at a
+// time - a full scan can cover thousands of conversations.
+const AUTOMATION_CONCURRENCY = 5;
+
+async function fetchAutomatedFlags(conversations, onProgress) {
+  const flags = new Array(conversations.length);
+  let nextIndex = 0;
+  let checked = 0;
+
+  async function worker() {
+    while (nextIndex < conversations.length) {
+      const i = nextIndex++;
+      try {
+        const msgJson = await crispGet(
+          `/website/${CRISP_WEBSITE_ID}/conversation/${conversations[i].session_id}/messages`
+        );
+        flags[i] = isFullyAutomated(msgJson.data);
+      } catch {
+        flags[i] = false; // can't tell - don't claim it's automated
+      }
+      checked += 1;
+      if (onProgress && (checked % 10 === 0 || checked === conversations.length)) {
+        onProgress(checked, conversations.length);
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: AUTOMATION_CONCURRENCY }, worker));
+  return flags;
+}
+
 // ---- Scan conversations across a date range (paginated internally) ----
 // Streams one JSON object per line (newline-delimited) so the frontend can
 // show real progress while pages are still being fetched from Crisp, then
@@ -462,10 +522,15 @@ app.get("/api/scan", requireAppPassword, async (req, res) => {
       }
     }
 
-    const stats = { resolved: 0, pending: 0, unresolved: 0 };
+    const stats = { resolved: 0, pending: 0, unresolved: 0, automated: 0 };
     for (const c of conversations) {
       if (stats[c.state] !== undefined) stats[c.state] += 1;
     }
+
+    const automatedFlags = await fetchAutomatedFlags(conversations, (checked, total) => {
+      res.write(JSON.stringify({ type: "progress", phase: "automation", checked, total }) + "\n");
+    });
+    stats.automated = automatedFlags.filter(Boolean).length;
 
     res.write(
       JSON.stringify({
@@ -473,7 +538,7 @@ app.get("/api/scan", requireAppPassword, async (req, res) => {
         total: conversations.length,
         stats,
         hitCap,
-        conversations: conversations.map((c) => ({
+        conversations: conversations.map((c, i) => ({
           session_id: c.session_id,
           state: c.state,
           created_at: c.created_at,
@@ -482,6 +547,7 @@ app.get("/api/scan", requireAppPassword, async (req, res) => {
           email: (c.meta && c.meta.email) || "",
           phone: (c.meta && c.meta.phone) || "",
           last_message: (c.preview_message && c.preview_message.excerpt) || c.last_message || "",
+          automated: automatedFlags[i],
         })),
       }) + "\n"
     );
