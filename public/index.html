@@ -149,7 +149,17 @@
   <div class="modal-box">
     <button class="modal-close" id="modalClose">&times;</button>
     <div class="meta" id="modalMeta"></div>
-    <div class="thread" id="modalThread"></div>
+    <div class="modal-tabs" id="modalTabs">
+      <button class="modal-tab active" data-tab="conversation" id="modalTabConversation">Conversation</button>
+      <button class="modal-tab" data-tab="coding" id="modalTabCoding">Suggested Coding</button>
+    </div>
+    <div class="modal-page" id="modalPageConversation">
+      <div class="thread" id="modalThread"></div>
+    </div>
+    <div class="modal-page hidden" id="modalPageCoding">
+      <div class="record" id="modalRecord"></div>
+      <div id="modalCoding"></div>
+    </div>
   </div>
 </div>
 

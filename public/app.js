@@ -102,8 +102,11 @@ async function scanWithProgress(pathAndQuery, onProgress) {
 // a curve that climbs quickly at first and eases toward a 92% ceiling -
 // staying visibly short of "done" no matter how many pages a scan turns
 // out to need, until the final response actually arrives and we jump to 100%.
+// Tuned around the ~400-page (20,000-conversation) safety cap so the bar
+// keeps climbing meaningfully across a full large scan instead of flattening
+// out in the first few dozen pages.
 function progressFromPageCount(page) {
-  return 92 * (1 - Math.exp(-page / 6));
+  return 92 * (1 - Math.exp(-page / 100));
 }
 
 function showProgress() {
@@ -151,7 +154,7 @@ $("loginBtn").addEventListener("click", async () => {
   if (!ok) {
     showLogin(true);
   } else {
-    loadFullHistory();
+    showEmptyState();
   }
 });
 $("loginPassword").addEventListener("keydown", (e) => {
@@ -166,44 +169,26 @@ $("loginPassword").addEventListener("keydown", (e) => {
 
   if (!ok) {
     showLogin(false);
-    renderVolumeChart([]);
-    renderStatusChart({ resolved: 0, pending: 0, unresolved: 0 }, 0);
-    renderWeekdayChart([]);
-    renderHourChart([]);
-    return;
   }
-
-  loadFullHistory();
+  showEmptyState();
 })();
 
-// ---------- Default view: everything since we started using Crisp ----------
-async function loadFullHistory() {
-  const note = $("fetchNote");
-  note.textContent = "Loading complete history since you started using Crisp...";
-  showProgress();
-  try {
-    const json = await scanWithProgress(`/api/scan?maxPages=200`, (p) => {
-      setProgress(progressFromPageCount(p.page));
-      note.textContent = `Loading... ${p.loaded} conversations found so far.`;
-    });
-    setProgress(100);
-    state.conversations = json.conversations;
-    state.page = 1;
-    renderStats(json.stats, json.total);
-    renderTable();
-    renderVolumeChart(state.conversations);
-    renderStatusChart(json.stats, json.total);
-    renderWeekdayChart(state.conversations);
-    renderHourChart(state.conversations);
-    $("exportBtn").disabled = state.conversations.length === 0;
-    note.textContent = json.hitCap
-      ? `Showing all-time data: ${json.total} conversations (hit the safety cap - narrow your date range and fetch to see a specific window).`
-      : `Showing all-time data: ${json.total} conversations since you started using Crisp. Pick a date range and fetch to narrow this down.`;
-  } catch (e) {
-    note.textContent = "Error loading history: " + e.message;
-  } finally {
-    hideProgress();
-  }
+// ---------- Default view: nothing loaded until a date range is fetched ----------
+// We deliberately don't auto-fetch conversations on load (or on reset) -
+// scanning is expensive and the user should choose a date range first.
+// Looking up a specific session by ID (below) bypasses this entirely, since
+// it hits Crisp directly for that one conversation.
+function showEmptyState() {
+  state.conversations = [];
+  state.page = 1;
+  renderStats({ resolved: 0, pending: 0, unresolved: 0 }, 0);
+  renderTable();
+  renderVolumeChart([]);
+  renderStatusChart({ resolved: 0, pending: 0, unresolved: 0 }, 0);
+  renderWeekdayChart([]);
+  renderHourChart([]);
+  $("exportBtn").disabled = true;
+  $("fetchNote").textContent = 'Pick a start and end date, then click "Fetch conversations" to load data.';
 }
 
 // ---------- Fetch conversations ----------
@@ -587,6 +572,10 @@ $("fetchBtn").addEventListener("click", async () => {
   const start = $("startDate").value;
   const end = $("endDate").value;
   const note = $("fetchNote");
+  if (!start || !end) {
+    note.textContent = "Pick both a start and end date before fetching.";
+    return;
+  }
   $("fetchBtn").disabled = true;
   showProgress();
   note.textContent = "Fetching… this can take a while for large date ranges.";
@@ -626,7 +615,7 @@ $("resetBtn").addEventListener("click", () => {
   state.sortDir = "desc";
   state.page = 1;
 
-  loadFullHistory();
+  showEmptyState();
 });
 
 $("filterBox").addEventListener("input", () => {
@@ -670,14 +659,98 @@ $("jumpSession").addEventListener("keydown", (e) => {
 });
 
 // ---------- Conversation reader modal ----------
+// Tracks the currently open conversation so the "Suggested Coding" tab can
+// reuse the already-fetched messages (no second Crisp round trip) and so
+// switching tabs back and forth doesn't re-call the AI each time.
+const modalState = { sessionId: null, messages: [], conversationLoaded: false, coding: null, codingLoading: false };
+
+function switchModalTab(tab) {
+  $("modalTabConversation").classList.toggle("active", tab === "conversation");
+  $("modalTabCoding").classList.toggle("active", tab === "coding");
+  $("modalPageConversation").classList.toggle("hidden", tab !== "conversation");
+  $("modalPageCoding").classList.toggle("hidden", tab !== "coding");
+  if (tab === "coding") ensureCodingSuggestions();
+}
+
+$("modalTabConversation").addEventListener("click", () => switchModalTab("conversation"));
+$("modalTabCoding").addEventListener("click", () => switchModalTab("coding"));
+
+function renderCodingStatus(html, isError) {
+  $("modalCoding").innerHTML = `<div class="coding-status${isError ? " error" : ""}">${html}</div>`;
+}
+
+function renderCodingSuggestions(fields) {
+  $("modalCoding").innerHTML = `
+    <div class="coding-disclaimer">Auto-suggested by scanning this conversation for keywords tied to each category. Always verify before entering values into the spreadsheet.</div>
+    <div class="coding-grid">
+      ${fields
+        .map((f) => {
+          const lowConfidence = !f.note;
+          return `
+            <div class="coding-field">
+              <div class="coding-label">${escapeHtml(f.label)}</div>
+              <div class="coding-value${lowConfidence ? " not-discussed" : ""}">${escapeHtml(f.value || "—")}</div>
+              ${f.note ? `<div class="coding-note">${escapeHtml(f.note)}</div>` : ""}
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+async function ensureCodingSuggestions() {
+  if (modalState.coding || modalState.codingLoading) return;
+  if (!modalState.conversationLoaded) {
+    renderCodingStatus("Loading conversation…");
+    return; // openConversation() calls back in here once messages are in
+  }
+  const sessionId = modalState.sessionId;
+  modalState.codingLoading = true;
+  renderCodingStatus("Reading the conversation…");
+  try {
+    const res = await fetch(`/api/coding/${encodeURIComponent(sessionId)}`, {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({ messages: modalState.messages }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) throw new Error(json.reason || "Request failed");
+    if (modalState.sessionId !== sessionId) return; // modal moved on to another conversation
+    modalState.coding = json.suggestion;
+    renderCodingSuggestions(modalState.coding);
+  } catch (e) {
+    if (modalState.sessionId !== sessionId) return;
+    renderCodingStatus(
+      `${escapeHtml(e.message)}<button class="coding-retry" id="codingRetryBtn">Retry</button>`,
+      true
+    );
+    $("codingRetryBtn").addEventListener("click", ensureCodingSuggestions);
+  } finally {
+    modalState.codingLoading = false;
+  }
+}
+
 async function openConversation(sessionId) {
+  modalState.sessionId = sessionId;
+  modalState.messages = [];
+  modalState.conversationLoaded = false;
+  modalState.coding = null;
+  modalState.codingLoading = false;
+  switchModalTab("conversation");
   $("modal").classList.remove("hidden");
   $("modalMeta").innerHTML = "Loading…";
   $("modalThread").innerHTML = "";
+  $("modalRecord").innerHTML = "";
+  $("modalCoding").innerHTML = "";
   try {
     const json = await api(`/api/conversation/${encodeURIComponent(sessionId)}`);
     const conv = json.conversation || {};
     const msgs = json.messages || [];
+    modalState.messages = msgs;
+    modalState.conversationLoaded = true;
+    if ($("modalTabCoding").classList.contains("active")) ensureCodingSuggestions();
+    const record = json.record || null;
     const nickname = conv.meta && conv.meta.nickname;
     const email = conv.meta && conv.meta.email;
     const phone = conv.meta && conv.meta.phone;
@@ -691,6 +764,19 @@ async function openConversation(sessionId) {
       <span>ended: <b>${fmtDate(conv.updated_at) || "unknown"}</b></span>
       <span>${msgs.length} message${msgs.length === 1 ? "" : "s"}</span>
     `;
+
+    $("modalRecord").innerHTML = record
+      ? `
+        <div class="record-title">Data collection record</div>
+        <div class="record-grid">
+          ${record
+            .map(
+              (f) => `<div class="record-field"><div class="record-label">${escapeHtml(f.label)}</div><div class="record-value">${escapeHtml(f.value)}</div></div>`
+            )
+            .join("")}
+        </div>
+      `
+      : "";
 
     if (!msgs.length) {
       $("modalThread").innerHTML = `<div class="note">No messages in this conversation yet.</div>`;
