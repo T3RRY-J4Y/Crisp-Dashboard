@@ -9,8 +9,15 @@ const path = require("path");
 const fs = require("fs");
 const ExcelJS = require("exceljs");
 
+// Load local config from .env if present (Node 20.12+). Variables already
+// set in the real environment take precedence over the file.
+const ENV_PATH = path.join(__dirname, ".env");
+if (typeof process.loadEnvFile === "function" && fs.existsSync(ENV_PATH)) {
+  process.loadEnvFile(ENV_PATH);
+}
+
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "5mb" })); // insights posts up to 20k session IDs
 
 const PORT = process.env.PORT || 3000;
 const CRISP_WEBSITE_ID = process.env.CRISP_WEBSITE_ID;
@@ -384,6 +391,292 @@ function classifyConversation(messages) {
   ].map((f) => ({ label: f.label, value: f.value || "", note: f.note || "" }));
 }
 
+// ---- Visitor profile (from the bot's custom data) ----
+// The Sister Unathi bot saves each onboarding answer into the conversation's
+// custom data (meta.data.user_age, user_gender, ...). The flow sometimes
+// writes an answer into the wrong key (e.g. an age band under user_gender,
+// or "Yes" under user_province), so every value is checked against the
+// bot's own answer list and anything else is treated as not captured.
+// Only these derived, non-identifying fields leave the server - platform
+// IDs, usernames and ad click IDs never do.
+const AGE_BANDS = ["Below 13", "13-17", "14-24", "18-24", "25-30", "31-37", "38-44", "45-49", "50+"];
+const GENDERS = ["Female", "Male", "Other"];
+const PROVINCES = [
+  "Eastern Cape", "Free State", "Gauteng", "KwaZulu-Natal", "Limpopo",
+  "Mpumalanga", "North West", "Northern Cape", "Western Cape",
+];
+
+function pickAllowed(raw, allowed) {
+  if (raw === undefined || raw === null) return null;
+  const v = String(raw).trim();
+  if (/^skip$/i.test(v)) return "Skipped";
+  const norm = (s) => s.toLowerCase().replace(/[\s-]+/g, "");
+  return allowed.find((a) => norm(a) === norm(v)) || null;
+}
+
+function cleanText(raw) {
+  if (raw === undefined || raw === null) return null;
+  const v = String(raw).trim();
+  return v ? v : null;
+}
+
+function extractProfile(meta) {
+  const d = (meta && meta.data) || {};
+  let channel = "Web chat";
+  if (d.whatsapp_user_id || d.whatsapp_business_number) channel = "WhatsApp";
+  else if (d.instagram_igsid || d.instagram_business_account_id) channel = "Instagram";
+  else if (d.fb_psid || d.fb_page_id) channel = "Messenger";
+
+  let province = pickAllowed(d.user_province, PROVINCES);
+  if (/outside/i.test(String(d.user_country || "")) && !province) province = "Outside SA";
+
+  let source = null;
+  if (d.whatsapp_source_type === "ad") source = "Ad";
+  else if (d.whatsapp_source_type) source = "Social post";
+
+  return {
+    channel,
+    source,
+    consent: /agree/i.test(String(d.popia_consent || "")),
+    age: pickAllowed(d.user_age, AGE_BANDS),
+    gender: pickAllowed(d.user_gender, GENDERS),
+    province,
+    path: cleanText(d.user_path),
+    dmpa_choice: cleanText(d.dmpa_choice),
+    support_choice: cleanText(d.support_choice),
+    reminder_optin: /^yes$/i.test(String(d.reminder_optin || "").trim()),
+  };
+}
+
+// ---- Insights: most asked questions and what visitors wanted ----
+// Built from the visitors' own messages, so it needs each conversation's
+// message thread (not part of the conversation list). That's one Crisp call
+// per conversation, so it only runs when someone asks for it, and each
+// conversation's analysis is cached until its updated_at changes.
+// Everything here is local keyword/heuristic analysis - no external API.
+const INSIGHTS_CONCURRENCY = 5;
+const insightsCache = new Map(); // session_id -> { updated_at, result }
+
+// Crisp returns a conversation's messages newest-first in pages; walk back
+// with timestamp_before until a short page (capped for very long chats).
+async function fetchAllMessages(sessionId) {
+  const all = [];
+  let before = null;
+  for (let page = 0; page < 5; page++) {
+    const q = before ? `?timestamp_before=${before}` : "";
+    const json = await crispGet(`/website/${CRISP_WEBSITE_ID}/conversation/${sessionId}/messages${q}`);
+    const batch = json.data || [];
+    all.push(...batch);
+    if (batch.length < 40) break;
+    before = Math.min(...batch.map((m) => m.timestamp));
+  }
+  const seen = new Set();
+  return all
+    .filter((m) => !seen.has(m.fingerprint) && seen.add(m.fingerprint))
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
+const QUESTION_START = /^(what|how|where|when|why|who|which|can|could|is|are|do|does|did|will|would|should|may|am|was|were|have|has)\b/;
+const STOPWORDS = new Set(
+  ("a an the i me my we you your it its is are am was were be been do does did can could will would should may " +
+    "to of in on at for with and or but if so as by from about into than then there this that these those " +
+    "what how where when why who which have has had get got im i'm ive dont don't please hi hello hey sister " +
+    "unathi ok okay thanks thank yes no just also any some much many more need want know tell").split(" ")
+);
+// Onboarding answers and greetings aren't "what they wanted".
+const NOT_A_REQUEST = new Set(
+  ["hi", "hii", "hy", "hie", "hey", "hello", "helo", "heita", "sawubona", "molo", "dumela", "ok", "okay", "oky", "ohk", "k", "kk",
+    "yes", "yebo", "no", "thanks", "thanx", "thank you", "thank u", "ok thanks", "okay thanks", "ok thank you", "i agree",
+    "skip", "agree", "sure", "alright", "good", "fine", "cool", "bye", "what", "nothing", "noted", "great", "nice",
+    "good day", "good morning", "good afternoon", "good evening", "good night", "morning", "female", "male", "other",
+    "outside sa", "northwest", "north-west", "kzn", "south africa", "sa"]
+    .concat(AGE_BANDS.map((a) => a.toLowerCase()), PROVINCES.map((p) => p.toLowerCase()))
+);
+
+function redact(text) {
+  return text
+    .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "[email]")
+    .replace(/\+?\d[\d\s-]{7,}\d/g, "[number]");
+}
+
+function tokensOf(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 1 && !STOPWORDS.has(w))
+    .map((w) => (w.length > 4 ? w.replace(/(ing|es|s)$/, "") : w));
+}
+
+// WhatsApp replies quote the bot message being answered as "> ..." lines;
+// those are the bot's words, not the visitor's, so they're dropped.
+function visitorTexts(messages) {
+  return messages
+    .filter((m) => m.from === "user" && m.type === "text" && typeof m.content === "string")
+    .map((m) =>
+      m.content
+        .split("\n")
+        .filter((line) => !/^\s*>/.test(line))
+        .join("\n")
+        .trim()
+    )
+    .filter(Boolean);
+}
+
+function analyseConversation(messages) {
+  const texts = visitorTexts(messages);
+  const lower = texts.map((t) => ({ who: "the visitor", text: ` ${t.toLowerCase()} ` }));
+
+  const questions = [];
+  const replies = [];
+  for (const t of texts) {
+    for (const sentence of t.split(/(?<=[?.!])\s+|\n+/)) {
+      const s = sentence.trim();
+      const words = s.split(/\s+/).length;
+      if (words >= 3 && (s.includes("?") || QUESTION_START.test(s.toLowerCase()))) questions.push(redact(s).slice(0, 220));
+    }
+    const words = t.split(/\s+/).length;
+    const norm = t.toLowerCase().replace(/[^\p{L}\p{N}\s/-]/gu, "").replace(/\s+/g, " ").trim();
+    const isAge = /^\d{1,2}\s*(years?|yrs?)?(\s*old)?$/.test(norm);
+    const isLocation = /^(i'?m |i am )?(in|from|at|based in) /.test(norm);
+    if (words <= 4 && !t.includes("?") && norm.length > 2 && !isAge && !isLocation && !NOT_A_REQUEST.has(norm)) replies.push(norm);
+  }
+
+  const topic = matchKeywords(lower, KEYWORD_RULES["Primary Enquiry Category"]).value;
+  const needs = [];
+  for (const [value, keywords] of Object.entries(KEYWORD_RULES["Information Need"].options)) {
+    if (lower.some((m) => keywords.some((kw) => m.text.includes(kw)))) needs.push(value);
+  }
+  const flags = [];
+  for (const [flag, keywords] of Object.entries(EMERGING_THEME_FLAGS)) {
+    if (lower.some((m) => keywords.some((kw) => m.text.includes(kw)))) flags.push(flag.startsWith("Possible GBV") ? "GBV" : "Self-harm / crisis");
+  }
+  return { visitorMessages: texts.length, questions, replies, topic, needs, flags };
+}
+
+// Greedy clustering of similar questions: same words (order-free) with a
+// Jaccard overlap of at least 0.5 join the same group.
+function clusterQuestions(items) {
+  const clusters = [];
+  for (const item of items) {
+    const toks = new Set(tokensOf(item.text));
+    if (!toks.size) continue;
+    let best = null;
+    let bestScore = 0;
+    for (const c of clusters) {
+      let inter = 0;
+      for (const t of toks) if (c.tokens.has(t)) inter++;
+      const score = inter / (toks.size + c.tokens.size - inter);
+      if (score > bestScore) {
+        bestScore = score;
+        best = c;
+      }
+    }
+    if (best && bestScore >= 0.5) {
+      best.sessions.add(item.session_id);
+      best.variants.set(item.text, (best.variants.get(item.text) || 0) + 1);
+    } else {
+      clusters.push({ tokens: toks, sessions: new Set([item.session_id]), variants: new Map([[item.text, 1]]) });
+    }
+  }
+  return clusters
+    .map((c) => {
+      // Most common phrasing wins; ties prefer a properly written one.
+      const tidy = (t) => (/^[A-Z]/.test(t) ? 1 : 0) + (t.includes("?") ? 1 : 0);
+      const variants = [...c.variants].sort((a, b) => b[1] - a[1] || tidy(b[0]) - tidy(a[0]) || a[0].length - b[0].length);
+      const label = variants[0][0];
+      const topic = matchKeywords([{ who: "", text: ` ${label.toLowerCase()} ` }], KEYWORD_RULES["Primary Enquiry Category"]).value;
+      return {
+        question: label,
+        count: c.sessions.size,
+        variants: variants.length,
+        examples: variants.slice(1, 4).map((v) => v[0]),
+        topic,
+        session_id: [...c.sessions][0],
+      };
+    })
+    .sort((a, b) => b.count - a.count);
+}
+
+function tally(list) {
+  const m = new Map();
+  for (const v of list) m.set(v, (m.get(v) || 0) + 1);
+  return [...m].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+}
+
+app.post("/api/insights", requireAppPassword, async (req, res) => {
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.setHeader("Cache-Control", "no-cache");
+  const convs = (Array.isArray(req.body && req.body.conversations) ? req.body.conversations : [])
+    .filter((c) => c && typeof c.session_id === "string" && /^session_[\w-]+$/.test(c.session_id))
+    .slice(0, 20000);
+
+  const results = new Array(convs.length);
+  let next = 0;
+  let done = 0;
+  let failed = 0;
+  async function worker() {
+    while (next < convs.length) {
+      const i = next++;
+      const { session_id, updated_at } = convs[i];
+      const cached = insightsCache.get(session_id);
+      if (cached && cached.updated_at === updated_at) {
+        results[i] = cached.result;
+      } else {
+        try {
+          results[i] = analyseConversation(await fetchAllMessages(session_id));
+          insightsCache.set(session_id, { updated_at, result: results[i] });
+        } catch {
+          failed += 1;
+          results[i] = null;
+        }
+      }
+      done += 1;
+      if (done % 10 === 0 || done === convs.length) {
+        res.write(JSON.stringify({ type: "progress", done, total: convs.length }) + "\n");
+      }
+    }
+  }
+
+  try {
+    await Promise.all(Array.from({ length: INSIGHTS_CONCURRENCY }, worker));
+
+    const questionItems = [];
+    const flagged = [];
+    let visitorMessages = 0;
+    let convsWithQuestion = 0;
+    results.forEach((r, i) => {
+      if (!r) return;
+      visitorMessages += r.visitorMessages;
+      if (r.questions.length) convsWithQuestion += 1;
+      // Count each distinct question once per conversation.
+      for (const q of new Set(r.questions)) questionItems.push({ text: q, session_id: convs[i].session_id });
+      if (r.flags.length) flagged.push({ session_id: convs[i].session_id, flags: r.flags });
+    });
+    const analysed = results.filter(Boolean);
+
+    res.write(
+      JSON.stringify({
+        type: "done",
+        analysed: analysed.length,
+        failed,
+        visitorMessages,
+        questionCount: questionItems.length,
+        convsWithQuestion,
+        topics: tally(analysed.map((r) => r.topic)),
+        needs: tally(analysed.flatMap((r) => r.needs)),
+        replies: tally(analysed.flatMap((r) => [...new Set(r.replies)])).slice(0, 15),
+        questions: clusterQuestions(questionItems).slice(0, 100),
+        flagged,
+      }) + "\n"
+    );
+    res.end();
+  } catch (e) {
+    res.write(JSON.stringify({ type: "error", reason: e.message }) + "\n");
+    res.end();
+  }
+});
+
 // ---- simple password gate for our own API (not Crisp's) ----
 function requireAppPassword(req, res, next) {
   if (!APP_PASSWORDS.length) return next(); // no password configured -> open (not recommended)
@@ -408,7 +701,12 @@ app.get("/api/conversation/:sessionId", requireAppPassword, async (req, res) => 
       crispGet(`/website/${CRISP_WEBSITE_ID}/conversation/${sessionId}/messages`),
       getCollectionRecord(sessionId).catch(() => null),
     ]);
-    res.json({ conversation: convRes.data, messages: msgRes.data || [], record });
+    res.json({
+      conversation: convRes.data,
+      profile: extractProfile(convRes.data && convRes.data.meta),
+      messages: msgRes.data || [],
+      record,
+    });
   } catch (e) {
     res.status(e.status || 500).json({ error: true, reason: e.message });
   }
@@ -424,66 +722,6 @@ app.post("/api/coding/:sessionId", requireAppPassword, (req, res) => {
   const suggestion = classifyConversation(Array.isArray(messages) ? messages : []);
   res.json({ suggestion });
 });
-
-// ---- "Automated" detection ----
-// Crisp's own web UI has an "Automated" inbox (populated by its bot/AI
-// agent) for conversations no operator has touched yet, but that
-// classification isn't exposed as a field anywhere in the REST API - it has
-// to be derived from the message thread. The per-message `automated: true`
-// flag looked promising but under-reports: system events the bot generates
-// (e.g. it resolving the conversation) come through as `type: "event"` with
-// no `automated` flag at all, even though nothing but the bot touched the
-// conversation. What's reliably present on every bot-sent message,
-// including those events, is `origin: "urn:crisp.im:bot:0"`. So: a
-// conversation is "automated" if at least one operator-side message exists
-// and every one of them has that bot origin - the same condition under
-// which Crisp keeps a conversation in its Automated inbox (any
-// operator-attributed message from elsewhere moves it out).
-const BOT_ORIGIN = "urn:crisp.im:bot:0";
-
-function isFullyAutomated(messages) {
-  let sawOperatorMessage = false;
-  for (const m of messages || []) {
-    if (m.from === "operator") {
-      sawOperatorMessage = true;
-      if (m.origin !== BOT_ORIGIN) return false;
-    }
-  }
-  return sawOperatorMessage;
-}
-
-// Determining this requires fetching the full message thread per
-// conversation (not part of the lightweight conversation-list response), so
-// we run a small worker pool against Crisp rather than one request at a
-// time - a full scan can cover thousands of conversations.
-const AUTOMATION_CONCURRENCY = 5;
-
-async function fetchAutomatedFlags(conversations, onProgress) {
-  const flags = new Array(conversations.length);
-  let nextIndex = 0;
-  let checked = 0;
-
-  async function worker() {
-    while (nextIndex < conversations.length) {
-      const i = nextIndex++;
-      try {
-        const msgJson = await crispGet(
-          `/website/${CRISP_WEBSITE_ID}/conversation/${conversations[i].session_id}/messages`
-        );
-        flags[i] = isFullyAutomated(msgJson.data);
-      } catch {
-        flags[i] = false; // can't tell - don't claim it's automated
-      }
-      checked += 1;
-      if (onProgress && (checked % 10 === 0 || checked === conversations.length)) {
-        onProgress(checked, conversations.length);
-      }
-    }
-  }
-
-  await Promise.all(Array.from({ length: AUTOMATION_CONCURRENCY }, worker));
-  return flags;
-}
 
 // ---- Scan conversations across a date range (paginated internally) ----
 // Streams one JSON object per line (newline-delimited) so the frontend can
@@ -522,15 +760,10 @@ app.get("/api/scan", requireAppPassword, async (req, res) => {
       }
     }
 
-    const stats = { resolved: 0, pending: 0, unresolved: 0, automated: 0 };
+    const stats = { resolved: 0, pending: 0, unresolved: 0 };
     for (const c of conversations) {
       if (stats[c.state] !== undefined) stats[c.state] += 1;
     }
-
-    const automatedFlags = await fetchAutomatedFlags(conversations, (checked, total) => {
-      res.write(JSON.stringify({ type: "progress", phase: "automation", checked, total }) + "\n");
-    });
-    stats.automated = automatedFlags.filter(Boolean).length;
 
     res.write(
       JSON.stringify({
@@ -538,7 +771,7 @@ app.get("/api/scan", requireAppPassword, async (req, res) => {
         total: conversations.length,
         stats,
         hitCap,
-        conversations: conversations.map((c, i) => ({
+        conversations: conversations.map((c) => ({
           session_id: c.session_id,
           state: c.state,
           created_at: c.created_at,
@@ -547,7 +780,7 @@ app.get("/api/scan", requireAppPassword, async (req, res) => {
           email: (c.meta && c.meta.email) || "",
           phone: (c.meta && c.meta.phone) || "",
           last_message: (c.preview_message && c.preview_message.excerpt) || c.last_message || "",
-          automated: automatedFlags[i],
+          profile: extractProfile(c.meta),
         })),
       }) + "\n"
     );

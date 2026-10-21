@@ -3,167 +3,483 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
 <title>Sister Unathi Conversations Dashboard</title>
 <link rel="icon" href="favicon.ico">
 <link rel="icon" type="image/png" sizes="512x512" href="favicon.png">
 <link rel="stylesheet" href="style.css">
+<script>
+  // Apply the saved theme before first paint to avoid a flash.
+  try {
+    const t = localStorage.getItem("crisp_dash_theme");
+    if (t) document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
 </head>
 <body>
 
-<div id="loginScreen" class="login-screen hidden">
-  <div class="login-content">
-    <img src="logo.webp" alt="Sister Unathi" class="login-logo">
-    <div class="login-box">
-      <div class="eyebrow">Sister Unathi · Crisp Dashboard</div>
-      <h1>Enter password</h1>
-      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
-      <button id="loginBtn">Unlock</button>
-      <p class="login-error hidden" id="loginError">Wrong password. Try again.</p>
-    </div>
-  </div>
-</div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-2.64-6.36"/><path d="M21 3v6h-6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9L1.8 18a1.6 1.6 0 001.4 2.4h17.6a1.6 1.6 0 001.4-2.4L13.7 3.9a1.6 1.6 0 00-2.8 0z"/><path d="M12 9v4M12 16.5h.01"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="M21.4 11.1l-9.2 9.2a6 6 0 01-8.5-8.5l9.2-9.2a4 4 0 015.7 5.7l-9.2 9.2a2 2 0 01-2.8-2.8l8.5-8.5"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M9.9 4.24A9.1 9.1 0 0112 4c6.5 0 10 8 10 8a17.6 17.6 0 01-2.16 3.19M6.6 6.6A17.3 17.3 0 002 12s3.5 7 10 7a9.7 9.7 0 005.39-1.61"/><path d="M14.1 14.1a3 3 0 11-4.2-4.2M2 2l20 20"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0116 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="i-funnel" viewBox="0 0 24 24"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/></symbol>
+  </defs>
+</svg>
 
-<div id="app" class="wrap hidden">
+<!-- ============ Login ============ -->
+<main id="loginScreen" class="login-screen hidden">
+  <section class="login-brand" aria-label="Sister Unathi">
+    <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="dot-grid" aria-hidden="true"></div>
 
-  <header class="hero">
-    <div class="hero-inner">
-      <div class="eyebrow">Crisp · Conversations</div>
-      <h1>Conversations Dashboard</h1>
-      <p class="sub">Track support conversations, response state and volume trends across any date range.</p>
+    <header class="lb-top">
+      <img src="logo.webp" alt="Sister Unathi · PrEP is Choice" class="lb-logo">
+    </header>
+
+    <div class="lb-copy">
+      <h2 class="lb-title">Every conversation,<br><em>understood.</em></h2>
+      <p class="lb-sub">See who Sister Unathi is reaching across WhatsApp, Messenger and web chat, by age, gender and province.</p>
+      <ul class="lb-features">
+        <li><span class="lbf-icon"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg></span><span><b>Read every chat</b>Full transcripts with suggested coding</span></li>
+        <li><span class="lbf-icon"><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg></span><span><b>Know your reach</b>Demographics and provinces at a glance</span></li>
+        <li><span class="lbf-icon"><svg class="ico" aria-hidden="true"><use href="#i-funnel"/></svg></span><span><b>Spot the drop-off</b>Track the onboarding funnel over time</span></li>
+      </ul>
     </div>
-    <img src="logo.webp" alt="Sister Unathi" class="hero-logo">
+
+    <div class="lb-float" aria-hidden="true">
+      <div class="glass g-chat">
+        <div class="gc-row in"><i style="width:68%"></i></div>
+        <div class="gc-row out"><i style="width:82%"></i><i style="width:54%"></i></div>
+        <div class="gc-row in"><i style="width:44%"></i></div>
+        <div class="gc-typing"><span></span><span></span><span></span></div>
+      </div>
+      <div class="glass g-bars">
+        <div class="gb-head"><i></i><i></i></div>
+        <div class="gb-cols"><span style="--h:42%"></span><span style="--h:68%"></span><span style="--h:55%"></span><span style="--h:88%"></span><span style="--h:63%"></span><span style="--h:76%"></span><span style="--h:94%"></span></div>
+      </div>
+      <div class="glass g-ring">
+        <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="17" class="r-track"/><circle cx="22" cy="22" r="17" class="r-fill"/></svg>
+        <div class="gr-lines"><i></i><i></i></div>
+      </div>
+    </div>
+
+    <footer class="lb-foot">
+      <span>#IChooseMe</span>
+      <span class="lb-sep" aria-hidden="true"></span>
+      <span>Restricted to the Demand Generation team</span>
+    </footer>
+  </section>
+
+  <section class="login-panel">
+    <form class="login-form" id="loginForm" novalidate>
+      <div class="lf-badge" aria-hidden="true"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></div>
+      <div class="login-heading">
+        <h1>Welcome back</h1>
+        <p>Enter your team password to open the dashboard.</p>
+      </div>
+      <div class="field">
+        <label for="loginPassword">Password</label>
+        <div class="input-icon pw-wrap">
+          <svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>
+          <input type="password" id="loginPassword" autocomplete="current-password" required aria-describedby="loginError capsHint" placeholder="Enter your password">
+          <button type="button" class="pw-toggle" id="pwToggle" aria-label="Show password" aria-pressed="false">
+            <svg class="ico ico-eye" aria-hidden="true"><use href="#i-eye"/></svg>
+            <svg class="ico ico-eye-off" aria-hidden="true"><use href="#i-eye-off"/></svg>
+          </button>
+        </div>
+        <p class="field-hint hidden" id="capsHint">Caps Lock is on</p>
+        <p class="field-error hidden" id="loginError" role="alert">That password didn't work. Check it and try again.</p>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block btn-lg" id="loginBtn">
+        <span class="btn-label">Unlock dashboard</span>
+        <svg class="ico btn-arrow" aria-hidden="true"><use href="#i-arrow-right"/></svg>
+        <span class="spinner" aria-hidden="true"></span>
+      </button>
+      <p class="lf-note">
+        <svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg>
+        Visitor data is handled under POPIA. Don't share your password.
+      </p>
+    </form>
+    <button class="icon-btn login-theme" id="loginThemeToggle" type="button" aria-label="Toggle theme" title="Toggle theme">
+      <svg class="ico ico-moon" aria-hidden="true"><use href="#i-moon"/></svg>
+      <svg class="ico ico-sun" aria-hidden="true"><use href="#i-sun"/></svg>
+    </button>
+  </section>
+</main>
+
+<!-- ============ App ============ -->
+<div id="app" class="hidden">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <img src="logo.webp" alt="Sister Unathi" class="brand-logo">
+        <span class="brand-divider" aria-hidden="true"></span>
+        <span class="brand-title">Conversations</span>
+      </div>
+      <form class="lookup" id="jumpForm" role="search">
+        <label for="jumpSession" class="sr-only">Open a conversation by session ID</label>
+        <div class="input-icon">
+          <svg class="ico" aria-hidden="true"><use href="#i-search"/></svg>
+          <input type="text" id="jumpSession" placeholder="Open by session ID…" autocomplete="off" spellcheck="false">
+          <kbd class="kbd" aria-hidden="true">/</kbd>
+        </div>
+      </form>
+      <div class="topbar-actions">
+        <button class="icon-btn" id="themeToggle" type="button" aria-label="Switch to dark theme" title="Toggle theme">
+          <svg class="ico ico-moon" aria-hidden="true"><use href="#i-moon"/></svg>
+          <svg class="ico ico-sun" aria-hidden="true"><use href="#i-sun"/></svg>
+        </button>
+        <button class="icon-btn" id="logoutBtn" type="button" aria-label="Sign out" title="Sign out">
+          <svg class="ico" aria-hidden="true"><use href="#i-logout"/></svg>
+        </button>
+      </div>
+    </div>
   </header>
 
-  <div class="panel">
-    <div class="panel-title">Fetch by date range</div>
-    <div class="row">
-      <div class="field">
-        <label for="startDate">Start date</label>
-        <input type="date" id="startDate">
+  <section class="page-header">
+    <div class="page-header-inner">
+      <nav class="crumbs" aria-label="Breadcrumb"><span>Sister Unathi</span><svg class="ico" aria-hidden="true"><use href="#i-chevron-right"/></svg><span aria-current="page">Conversations</span></nav>
+      <h1>Conversations overview</h1>
+      <p class="page-sub" id="rangeSummary">Choose a date range to load conversations.</p>
+      <div class="view-tabs" role="tablist" aria-label="Dashboard views">
+        <button class="view-tab active" role="tab" id="tabOverview" aria-selected="true" aria-controls="viewOverview">Overview</button>
+        <button class="view-tab" role="tab" id="tabInsights" aria-selected="false" aria-controls="viewInsights" tabindex="-1">Questions &amp; needs</button>
       </div>
-      <div class="field">
-        <label for="endDate">End date</label>
-        <input type="date" id="endDate">
-      </div>
-      <div class="field grow">
-        <label>&nbsp;</label>
-        <div class="btn-group">
-          <button class="primary" id="fetchBtn">Fetch conversations</button>
-          <button class="secondary" id="resetBtn">Reset</button>
+    </div>
+  </section>
+
+  <main class="page">
+
+    <!-- Filters -->
+    <section class="card toolbar" aria-labelledby="rangeHeading">
+      <h2 id="rangeHeading" class="sr-only">Date range</h2>
+      <div class="toolbar-row">
+        <div class="field">
+          <label for="startDate">From</label>
+          <input type="date" id="startDate">
+        </div>
+        <div class="field">
+          <label for="endDate">To</label>
+          <input type="date" id="endDate">
+        </div>
+        <div class="field presets-field">
+          <span class="label" id="presetsLabel">Quick range</span>
+          <div class="chips" role="group" aria-labelledby="presetsLabel" id="presets">
+            <button type="button" class="chip" data-preset="7">7 days</button>
+            <button type="button" class="chip" data-preset="30">30 days</button>
+            <button type="button" class="chip" data-preset="90">90 days</button>
+            <button type="button" class="chip" data-preset="month">This month</button>
+          </div>
+        </div>
+        <div class="toolbar-actions">
+          <input type="file" id="csvInput" accept=".csv,text/csv" class="sr-only" tabindex="-1">
+          <button type="button" class="btn btn-secondary" id="importBtn" title="Load conversations from a CSV file instead of Crisp">
+            <svg class="ico" aria-hidden="true"><use href="#i-upload"/></svg>Import CSV
+          </button>
+          <button type="button" class="btn btn-ghost" id="resetBtn">
+            <svg class="ico" aria-hidden="true"><use href="#i-refresh"/></svg>Reset
+          </button>
+          <button type="button" class="btn btn-primary" id="fetchBtn">
+            <span class="btn-label">Fetch conversations</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
         </div>
       </div>
-    </div>
-    <div class="progress-wrap hidden" id="progressWrap">
-      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
-      <span class="progress-pct" id="progressPct">0%</span>
-    </div>
-    <p class="note" id="fetchNote"></p>
-  </div>
+      <div class="progress hidden" id="progressWrap">
+        <div class="progress-track" role="progressbar" aria-label="Loading conversations" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progressBar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <span class="progress-pct" id="progressPct">0%</span>
+      </div>
+      <p class="note" id="fetchNote" aria-live="polite"></p>
+      <div class="import-banner hidden" id="importBanner">
+        <svg class="ico" aria-hidden="true"><use href="#i-file"/></svg>
+        <div>
+          <b id="importTitle"></b>
+          <span id="importDetail"></span>
+        </div>
+        <button type="button" class="btn btn-ghost" id="importClear">Clear import</button>
+      </div>
+    </section>
 
-  <div class="panel">
-    <div class="panel-title">Jump to a session ID</div>
-    <div class="row">
-      <div class="field grow">
-        <label for="jumpSession">Session ID</label>
-        <input type="text" id="jumpSession" placeholder="Add a session ID">
-      </div>
-      <div class="field">
-        <label>&nbsp;</label>
-        <button class="secondary" id="jumpBtn">Open conversation</button>
-      </div>
-    </div>
-  </div>
+    <div id="viewOverview" role="tabpanel" aria-labelledby="tabOverview" class="view">
+    <h2 class="section-label">Overview</h2>
+    <!-- KPIs -->
+    <section class="stats" id="statsRow" aria-label="Summary"></section>
 
-  <div class="stats-row" id="statsRow"></div>
+    <h2 class="section-label">Audience &amp; engagement</h2>
+    <!-- Charts -->
+    <section class="chart-grid" aria-label="Charts">
+      <article class="card chart-card span-2">
+        <header class="card-head">
+          <div>
+            <h3>Conversations over time</h3>
+            <p class="card-sub" id="volumeSub">New conversations per day, stacked by channel</p>
+          </div>
+          <div class="legend" id="volumeLegend"></div>
+        </header>
+        <div class="chart-wrap ">
+          <canvas id="volumeChart" role="img" aria-label="Stacked area chart of daily conversations by channel"></canvas>
+          <div class="empty-chart hidden" id="volumeChartEmpty">No data loaded yet</div>
+        </div>
+      </article>
+      <article class="card chart-card donut-card">
+        <header class="card-head">
+          <div>
+            <h3>Channel mix</h3>
+            <p class="card-sub" id="channelSub">Share of conversations by channel</p>
+          </div>
+        </header>
+        <div class="chart-wrap donut">
+          <canvas id="channelChart" role="img" aria-label="Donut chart of conversations by channel"></canvas>
+          <div class="empty-chart hidden" id="channelChartEmpty">No data loaded yet</div>
+          <div class="donut-center hidden" id="channelCenter"><span class="n" id="channelTotal">0</span><span class="l">conversations</span></div>
+        </div>
+        <ul class="donut-legend" id="channelLegend"></ul>
+      </article>
+      <article class="card chart-card span-2">
+        <header class="card-head">
+          <div>
+            <h3>Age &amp; gender</h3>
+            <p class="card-sub" id="pyramidSub">Population pyramid of visitors who answered</p>
+          </div>
+          <div class="legend" id="pyramidLegend"></div>
+        </header>
+        <div class="chart-wrap tall">
+          <canvas id="pyramidChart" role="img" aria-label="Population pyramid of visitors by age band and gender"></canvas>
+          <div class="empty-chart hidden" id="pyramidChartEmpty">No age data yet</div>
+        </div>
+      </article>
+      <div class="stack-col">
+      <article class="card chart-card ">
+        <header class="card-head">
+          <div>
+            <h3>Gender</h3>
+            <p class="card-sub" id="genderSub">How visitors identify</p>
+          </div>
+        </header>
+        <div class="split" id="genderSplit"></div>
+      </article>
+      <article class="card chart-card ">
+        <header class="card-head">
+          <div>
+            <h3>Chosen path</h3>
+            <p class="card-sub" id="pathSub">Which journey visitors picked</p>
+          </div>
+        </header>
+        <div class="split" id="pathSplit"></div>
+      </article>
+      </div>
+      <article class="card chart-card span-2">
+        <header class="card-head">
+          <div>
+            <h3>Province</h3>
+            <p class="card-sub" id="provinceSub">Visitors by province, ranked</p>
+          </div>
+        </header>
+        <div class="barlist-wrap" id="provinceList"></div>
+      </article>
+      <article class="card chart-card ">
+        <header class="card-head">
+          <div>
+            <h3>Onboarding funnel</h3>
+            <p class="card-sub" id="funnelSub">How far visitors get through the bot's questions</p>
+          </div>
+        </header>
+        <div class="funnel" id="funnelChart"></div>
+      </article>
+      <article class="card chart-card span-2">
+        <header class="card-head">
+          <div>
+            <h3>DMPA interest</h3>
+            <p class="card-sub" id="dmpaSub">What DMPA-SC/SI visitors asked for</p>
+          </div>
+        </header>
+        <div class="lollipop" id="dmpaChart"></div>
+      </article>
+      <article class="card chart-card">
+        <header class="card-head">
+          <div>
+            <h3>Acquisition</h3>
+            <p class="card-sub" id="sourceSub">How WhatsApp visitors found the service</p>
+          </div>
+        </header>
+        <div class="split" id="sourceSplit"></div>
+      </article>
+    </section>
 
-  <div class="charts-row">
-    <div class="chart-panel">
-      <div class="panel-title">Conversation volume</div>
-      <div class="chart-canvas-wrap">
-        <canvas id="volumeChart"></canvas>
-        <div class="empty-chart hidden" id="volumeEmpty">Fetch a date range to see volume trends.</div>
+    <h2 class="section-label">Conversations</h2>
+    <!-- Table -->
+    <section class="card table-card" id="tablePanel" aria-labelledby="tableHeading">
+      <header class="table-head">
+        <div class="table-title">
+          <h2 id="tableHeading">Conversation log</h2>
+          <span class="count-pill" id="tableCount"></span>
+        </div>
+        <div class="table-tools">
+          <div class="segmented" role="group" aria-label="Filter by status" id="statusFilter">
+            <button type="button" class="seg active" data-status="all" aria-pressed="true">All</button>
+            <button type="button" class="seg" data-status="resolved" aria-pressed="false">Resolved</button>
+            <button type="button" class="seg" data-status="pending" aria-pressed="false">Pending</button>
+            <button type="button" class="seg" data-status="unresolved" aria-pressed="false">Unresolved</button>
+          </div>
+          <div class="input-icon filter-input">
+            <svg class="ico" aria-hidden="true"><use href="#i-search"/></svg>
+            <label for="filterBox" class="sr-only">Filter conversations</label>
+            <input type="text" id="filterBox" placeholder="Name, phone, province, message…" autocomplete="off">
+          </div>
+          <button type="button" class="btn btn-secondary" id="exportBtn" disabled>
+            <svg class="ico" aria-hidden="true"><use href="#i-download"/></svg>Export CSV
+          </button>
+        </div>
+      </header>
+      <div class="table-wrap">
+        <table id="convTable">
+          <thead>
+            <tr>
+              <th class="sortable" data-key="nickname" scope="col"><button type="button">Visitor</button></th>
+              <th class="sortable" data-key="state" scope="col"><button type="button">Status</button></th>
+              <th scope="col"><span>Profile</span></th>
+              <th class="sortable" data-key="last_message" scope="col"><button type="button">Last message</button></th>
+              <th class="sortable" data-key="created_at" scope="col"><button type="button">Started</button></th>
+              <th class="sortable" data-key="updated_at" scope="col"><button type="button">Last activity</button></th>
+              <th class="sortable" data-key="session_id" scope="col"><button type="button">Session</button></th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody id="convBody"></tbody>
+        </table>
       </div>
+      <footer class="table-foot" id="pagination"></footer>
+    </section>
     </div>
-    <div class="chart-panel">
-      <div class="panel-title">Status breakdown</div>
-      <div class="chart-canvas-wrap donut">
-        <canvas id="statusChart"></canvas>
-        <div class="donut-center hidden" id="donutCenter"><span class="n" id="donutTotal">0</span><span class="l">Total</span></div>
-        <div class="empty-chart hidden" id="statusEmpty">No data yet.</div>
-      </div>
-      <div class="legend-row" id="statusLegend"></div>
-    </div>
-  </div>
 
-  <div class="charts-row even">
-    <div class="chart-panel">
-      <div class="panel-title">Conversations by day of week</div>
-      <div class="chart-canvas-wrap">
-        <canvas id="weekdayChart"></canvas>
-        <div class="empty-chart hidden" id="weekdayEmpty">Fetch a date range to see this breakdown.</div>
-      </div>
-    </div>
-    <div class="chart-panel">
-      <div class="panel-title">Conversations by hour of day</div>
-      <div class="chart-canvas-wrap">
-        <canvas id="hourChart"></canvas>
-        <div class="empty-chart hidden" id="hourEmpty">Fetch a date range to see this breakdown.</div>
-      </div>
-    </div>
-  </div>
+    <div id="viewInsights" role="tabpanel" aria-labelledby="tabInsights" class="view hidden">
+      <section class="card insights-intro">
+        <div>
+          <h3>What visitors are asking</h3>
+          <p class="card-sub" id="insightsIntro">Load a date range first, then analyse the visitors' messages to see their most asked questions and what they wanted.</p>
+          <div class="progress hidden" id="insightsProgress">
+            <div class="progress-track" role="progressbar" aria-label="Analysing messages" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="insightsBar"><div class="progress-fill" id="insightsFill"></div></div>
+            <span class="progress-pct" id="insightsPct">0%</span>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary" id="insightsBtn" disabled>
+          <span class="btn-label">Analyse messages</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+      </section>
 
-  <div class="panel" id="tablePanel">
-    <div class="panel-title-row">
-      <div class="panel-title" style="margin:0;flex:none;">Conversations <span id="tableCount"></span></div>
-      <div class="table-actions">
-        <input type="text" id="filterBox" placeholder="Filter by name, email, phone…">
-        <button class="secondary" id="exportBtn" disabled>Export CSV</button>
+      <div id="insightsResults" class="insights hidden">
+        <section class="stats" id="insightsStats" aria-label="Message summary"></section>
+
+        <section class="chart-grid">
+          <article class="card chart-card span-2">
+            <header class="card-head"><div><h3>What visitors wanted</h3><p class="card-sub">Main topic of each conversation, from the visitor's own words</p></div></header>
+            <div class="barlist-wrap" id="topicList"></div>
+          </article>
+          <article class="card chart-card">
+            <header class="card-head"><div><h3>Top quick replies</h3><p class="card-sub">Short answers visitors typed to pick an option</p></div></header>
+            <div class="barlist-wrap" id="replyList"></div>
+          </article>
+          <article class="card chart-card span-2">
+            <header class="card-head"><div><h3>Information needs</h3><p class="card-sub">What visitors wanted to know (a conversation can have several)</p></div></header>
+            <div class="lollipop" id="needsChart"></div>
+          </article>
+          <article class="card chart-card">
+            <header class="card-head"><div><h3>Flagged for review</h3><p class="card-sub">Possible GBV or self-harm mentions from visitors</p></div></header>
+            <div id="flagList"></div>
+          </article>
+        </section>
+
+        <section class="card table-card">
+          <header class="table-head">
+            <div class="table-title"><h2>Most asked questions</h2><span class="count-pill" id="questionCount"></span></div>
+            <div class="table-tools">
+              <div class="input-icon filter-input">
+                <svg class="ico" aria-hidden="true"><use href="#i-search"/></svg>
+                <label for="questionFilter" class="sr-only">Filter questions</label>
+                <input type="text" id="questionFilter" placeholder="Filter questions…" autocomplete="off">
+              </div>
+            </div>
+          </header>
+          <ol class="q-list" id="questionList"></ol>
+          <footer class="table-foot" id="questionFoot"></footer>
+        </section>
       </div>
     </div>
-    <div class="table-wrap">
-      <table id="convTable">
-        <thead>
-          <tr>
-            <th class="sortable" data-key="session_id">Session</th>
-            <th class="sortable" data-key="state">Status</th>
-            <th class="sortable" data-key="created_at">Started</th>
-            <th class="sortable" data-key="updated_at">Ended</th>
-            <th class="sortable" data-key="nickname">Visitor</th>
-            <th class="sortable" data-key="phone">Phone</th>
-            <th class="sortable" data-key="last_message">Last message</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="convBody">
-          <tr><td colspan="8" class="empty">Fetch a date range to see conversations here.</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="pagination" id="pagination"></div>
-  </div>
-
+  </main>
 </div>
 
-<div id="modal" class="modal hidden">
-  <div class="modal-backdrop" id="modalBackdrop"></div>
-  <div class="modal-box">
-    <button class="modal-close" id="modalClose">&times;</button>
-    <div class="meta" id="modalMeta"></div>
-    <div class="modal-tabs" id="modalTabs">
-      <button class="modal-tab active" data-tab="conversation" id="modalTabConversation">Conversation</button>
-      <button class="modal-tab" data-tab="coding" id="modalTabCoding">Suggested Coding</button>
+<!-- ============ Conversation drawer ============ -->
+<div id="modal" class="drawer hidden" aria-hidden="true">
+  <div class="drawer-backdrop" id="modalBackdrop"></div>
+  <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" id="drawerPanel">
+    <header class="drawer-head">
+      <div class="drawer-ident" id="modalHead">
+        <div class="avatar" id="modalAvatar" aria-hidden="true">?</div>
+        <div class="drawer-ident-text">
+          <h2 id="modalTitle">Loading…</h2>
+          <div class="drawer-ident-sub" id="modalSub"></div>
+        </div>
+      </div>
+      <button class="icon-btn" id="modalClose" type="button" aria-label="Close conversation">
+        <svg class="ico" aria-hidden="true"><use href="#i-x"/></svg>
+      </button>
+    </header>
+    <div class="meta-grid" id="modalMeta"></div>
+    <div class="tabs" role="tablist" aria-label="Conversation views">
+      <button class="tab active" role="tab" aria-selected="true" aria-controls="modalPageConversation" id="modalTabConversation">Conversation</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="modalPageCoding" id="modalTabCoding" tabindex="-1">Suggested coding</button>
     </div>
-    <div class="modal-page" id="modalPageConversation">
-      <div class="thread" id="modalThread"></div>
+    <div class="drawer-body">
+      <div class="tab-page" role="tabpanel" id="modalPageConversation" aria-labelledby="modalTabConversation">
+        <div class="thread" id="modalThread"></div>
+      </div>
+      <div class="tab-page hidden" role="tabpanel" id="modalPageCoding" aria-labelledby="modalTabCoding">
+        <div class="record" id="modalRecord"></div>
+        <div id="modalCoding"></div>
+      </div>
     </div>
-    <div class="modal-page hidden" id="modalPageCoding">
-      <div class="record" id="modalRecord"></div>
-      <div id="modalCoding"></div>
-    </div>
+  </aside>
+</div>
+
+<div class="drop-overlay hidden" id="dropOverlay" aria-hidden="true">
+  <div class="drop-box">
+    <svg class="ico" aria-hidden="true"><use href="#i-upload"/></svg>
+    <b>Drop a CSV to import it</b>
+    <span>The file is read in your browser and isn't uploaded anywhere.</span>
   </div>
 </div>
+
+<div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 
 <script src="vendor/chart.umd.min.js"></script>
 <script src="app.js"></script>
+<script src="csv-import.js"></script>
 </body>
 </html>
